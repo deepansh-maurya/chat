@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h3>WebRTC Demo</h3>
+
+  <video id="local" autoplay muted playsinline></video>
+  <video id="remote" autoplay playsinline></video>
+  <br /><br />
+  <button id="call">Call</button>
+
+  <script>
+    // ---- BASIC IDENTIFICATION ----
+    const myId = prompt("Your ID (A or B)");
+    const peerId = prompt("Peer ID");
+
+    // ---- SIGNALING CONNECTION (TCP / WebSocket) ----
+    const socket = new WebSocket("ws://localhost:3000");
+
+    socket.onopen = () => {
+      socket.send(JSON.stringify({ type: "join", id: myId }));
+    };
+
+    // ---- WEBRTC ENGINE CREATION ----
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" } // public STUN
+      ]
+    });
+
+    // ---- ICE CANDIDATE EXCHANGE (PATH DISCOVERY) ----
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.send(JSON.stringify({
+          type: "ice",
+          to: peerId,
+          candidate: event.candidate
+        }));
+      }
+    };
+
+    // ---- REMOTE MEDIA RECEIVED ----
+    pc.ontrack = (event) => {
+      document.getElementById("remote").srcObject = event.streams[0];
+    };
+
+    // ---- CAPTURE LOCAL MEDIA ----
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then(stream => {
+        document.getElementById("local").srcObject = stream;
+
+        // Attach media to WebRTC engine
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      });
+
+    // ---- HANDLE SIGNALING MESSAGES ----
+    socket.onmessage = async (msg) => {
+      const data = JSON.parse(msg.data);
+
+      // ---- RECEIVED OFFER (SDP RULES) ----
+      if (data.type === "offer") {
+        await pc.setRemoteDescription(data.offer);
+
+        // Create ANSWER (agreement)
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.send(JSON.stringify({
+          type: "answer",
+          to: data.from,
+          answer
+        }));
+      }
+
+      // ---- RECEIVED ANSWER (SDP AGREEMENT COMPLETE) ----
+      if (data.type === "answer") {
+        await pc.setRemoteDescription(data.answer);
+      }
+
+      // ---- RECEIVED ICE CANDIDATE (PATH OPTION) ----
+      if (data.type === "ice") {
+        await pc.addIceCandidate(data.candidate);
+      }
+    };
+
+    // ---- START CALL (ONLY ONE SIDE DOES THIS) ----
+    document.getElementById("call").onclick = async () => {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      socket.send(JSON.stringify({
+        type: "offer",
+        to: peerId,
+        from: myId,
+        offer
+      }));
+    };
+  </script>
+</body>
+</html>

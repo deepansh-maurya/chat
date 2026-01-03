@@ -1,20 +1,33 @@
 import { io, Socket } from "socket.io-client";
 import { create } from "zustand";
 
-const BASE_URL =
-  import.meta.env.MODE === "development" ? import.meta.env.VITE_API_URL : "/";
+const BASE_URL = import.meta.env.VITE_API_URL;
 
 interface SocketState {
   socket: Socket | null;
   onlineUsers: string[];
   connectSocket: () => void;
   disconnectSocket: () => void;
+  isRecievingCall: boolean;
+  activeChatId: string;
+  setActiveChatId: (val: string) => void;
+  isCallDeclined: boolean | undefined;
+  setIsRecivingCall: (value: boolean) => void;
+  setIsCallDeclined: (value: boolean|undefined) => void;
 }
 
 export const useSocket = create<SocketState>()((set, get) => ({
   socket: null,
   onlineUsers: [],
-
+  isRecievingCall: false,
+  isCallDeclined: undefined,
+  activeChatId: "",
+  setActiveChatId: (val: string) => {
+    set((state) => ({
+      ...state,
+      activeChatId: val
+    }));
+  },
   connectSocket: () => {
     const { socket } = get();
     console.log(socket, "socket");
@@ -22,7 +35,7 @@ export const useSocket = create<SocketState>()((set, get) => ({
 
     const newSocket = io(BASE_URL, {
       withCredentials: true,
-      autoConnect: true,
+      autoConnect: true
     });
 
     set({ socket: newSocket });
@@ -36,11 +49,24 @@ export const useSocket = create<SocketState>()((set, get) => ({
       set({ onlineUsers: userIds });
     });
   },
+
+  setIsCallDeclined: (value: boolean | undefined) => {
+    set((state) => ({
+      ...state,
+      isCallDeclined: value
+    }));
+  },
+  setIsRecivingCall: (value) => {
+    set((state) => ({
+      ...state,
+      isRecievingCall: value
+    }));
+  },
   disconnectSocket: () => {
     const { socket } = get();
     if (socket) {
       socket.disconnect();
       set({ socket: null });
     }
-  },
+  }
 }));

@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { Server, type Socket } from "socket.io";
 import { Env } from "../config/env.config";
 import { validateChatParticipant } from "../services/chat.service";
-
+import * as cookie from "cookie";
 interface AuthenticatedSocket extends Socket {
   userId?: string;
 }
@@ -17,25 +17,32 @@ export const initializeSocket = (httpServer: HTTPServer) => {
     cors: {
       origin: Env.FRONTEND_ORIGIN,
       methods: ["GET", "POST"],
-      credentials: true,
-    },
+      credentials: true
+    }
+  });
+
+  io.engine.on("connection_error", (err) => {
+    console.log("ENGINE ERROR", err.message);
   });
 
   io.use(async (socket: AuthenticatedSocket, next) => {
     try {
       const rawCookie = socket.handshake.headers.cookie;
-
+      console.log(rawCookie, 31);
       if (!rawCookie) return next(new Error("Unauthorized"));
+      const cookies = cookie.parse(rawCookie);
 
-      const token = rawCookie?.split("=")?.[1]?.trim();
+      const token = cookies.accessToken;
       if (!token) return next(new Error("Unauthorized"));
-
+      console.log(token, 36);
       const decodedToken = jwt.verify(token, Env.JWT_SECRET) as {
         userId: string;
       };
-      if (!decodedToken) return next(new Error("Unauthorized"));
 
+      console.log(decodedToken, 41);
+      if (!decodedToken) return next(new Error("Unauthorized"));
       socket.userId = decodedToken.userId;
+      console.log(socket.userId, 44);
       next();
     } catch (error) {
       next(new Error("Internal server error"));
@@ -43,6 +50,8 @@ export const initializeSocket = (httpServer: HTTPServer) => {
   });
 
   io.on("connection", (socket: AuthenticatedSocket) => {
+    // console.log("connection", socket);
+
     const userId = socket.userId!;
     const newSocketId = socket.id;
     if (!socket.userId) {
@@ -74,6 +83,43 @@ export const initializeSocket = (httpServer: HTTPServer) => {
       }
     );
 
+    socket.on(
+      "call:request",
+      async (chatId: string, callback?: (err?: string) => void) => {
+        try {
+          console.log(chatId, userId, 90);
+
+          await validateChatParticipant(chatId, userId);
+          socket.join(`chat:${chatId}`);
+
+          socket.to(`chat:${chatId}`).emit("call:incoming", {
+            chatId,
+            from: userId
+          });
+
+          callback?.();
+        } catch (error) {
+          callback?.("Error joining chat");
+        }
+      }
+    );
+
+    socket.on(
+      "call:rejected",
+      async (chatId: string, callback?: (err?: string) => void) => {
+        console.log("call rejected", chatId);
+
+        socket.to(`chat:${chatId}`).emit("call:declined", {
+          chatId,
+          from: userId
+        });
+        callback?.();
+      }
+    );
+
+    
+
+
     socket.on("chat:leave", (chatId: string) => {
       if (chatId) {
         socket.leave(`chat:${chatId}`);
@@ -89,7 +135,7 @@ export const initializeSocket = (httpServer: HTTPServer) => {
 
         console.log("socket disconnected", {
           userId,
-          newSocketId,
+          newSocketId
         });
       }
     });
