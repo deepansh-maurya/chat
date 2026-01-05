@@ -1,68 +1,73 @@
 import { useSocket } from "@/hooks/use-socket";
 import { useWebRtc } from "@/hooks/use-webrtc";
-// import { getOtherUserAndGroup } from "@/lib/helper";
-// import type { ChatType } from "@/types/chat.type";
+import { WebRtcPeer } from "@/hooks/webrtc";
 import { Mic, Video, PhoneOff } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 
 // interface Props {
 //   chat: ChatType;
 //   currentUserId: string | null;
 // }
 
-const VideoCall = () => {
-//   const { name, avatar, isOnline } = getOtherUserAndGroup(chat, currentUserId);
+const VideoCall = ({
+  locaVideo,
+  remoteVideo
+}: {
+  locaVideo: RefObject<HTMLVideoElement | null>;
+  remoteVideo: RefObject<HTMLVideoElement | null>;
+}) => {
+  //   const { name, avatar, isOnline } = getOtherUserAndGroup(chat, currentUserId);
   const [muted, setMuted] = useState(false);
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const { pc } = useWebRtc();
-  const { socket, activeChatId } = useSocket();
+  const { pc, setIscallAccepted, isReciever } = useWebRtc();
   const [cameraOn, setCameraOn] = useState(true);
+  const { socket, activeChatId } = useSocket();
 
   useEffect(() => {
-    if (!pc || !socket || !remoteVideoRef.current || !localVideoRef.current)
-      return;
-
-    navigator.mediaDevices
-      .getUserMedia({ video: true, audio: true })
-      .then((stream) => {
-        remoteVideoRef.current!.srcObject = stream;
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-      });
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
+    if (!socket || isReciever == false) return;
+    (async () => {
+      const peer = new WebRtcPeer((candidate) => {
         socket.emit("call:webrtc:send_ice", {
           activeChatId,
-          candidate: event.candidate
+          candidate: candidate
         });
-      }
-    };
+      });
 
-    socket.on("call:webrtc:recive_offer", async (offer) => {
-      await pc.setRemoteDescription(offer);
+      peer.setOnRemoteStream((stream) => {
+        remoteVideo.current!.srcObject = stream;
+      });
 
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+      const localStream = await peer.initMedia();
+      locaVideo.current!.srcObject = localStream;
 
-      socket.emit("call:webrtc:send_answer", { activeChatId, answer });
-    });
+      socket.on("call:webrtc:recieve_offer", async (offer) => {
+        const answer = await peer.handleOffer(offer);
+        socket.emit("call:webrtc:send_answer", {
+          activeChatId,
+          answer
+        });
+        setIscallAccepted(true);
+      });
 
-    socket.on("call:webrtc:recieve_answer", async (answer) => {
-      await pc.setRemoteDescription(answer);
-    });
-
-    socket.on("call:webrtc:recieve_ice", async (candidate) => {
-      await pc.addIceCandidate(candidate);
-    });
-  }, [pc]);
+      socket.on("call:webrtc:recieve_ice", async (candidate) => {
+        await peer.handleIce(candidate);
+      });
+    })();
+  }, [
+    pc,
+    socket,
+    locaVideo,
+    remoteVideo,
+    activeChatId,
+    setIscallAccepted,
+    isReciever
+  ]);
 
   return (
     <div className="h-full flex flex-col items-center justify-center p-4">
       <div className="relative w-full max-w-4xl h-[60vh] bg-black rounded-md overflow-hidden flex items-center justify-center">
         {/* Remote video placeholder */}
         <video
-          ref={remoteVideoRef}
+          ref={remoteVideo}
           id="remote"
           className="w-full h-full object-cover bg-black"
           autoPlay
@@ -72,7 +77,7 @@ const VideoCall = () => {
         {/* Local small preview */}
         <div className="absolute right-4 bottom-4 w-36 h-24 bg-gray-900/70 rounded-md overflow-hidden flex items-center justify-center border border-border">
           <video
-            ref={localVideoRef}
+            ref={locaVideo}
             id="local"
             className="w-full h-full object-cover"
             autoPlay

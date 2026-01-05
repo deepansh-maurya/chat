@@ -83,7 +83,7 @@ const ChatHeader = ({
         <button
           onClick={() => {
 
-            
+            setIsCallDeclined(undefined)
             onTabChange?.("call");
             socket?.emit("call:request", chatId);
           }}

@@ -12,13 +12,23 @@ import useChatId from "@/hooks/use-chat-id";
 import { useSocket } from "@/hooks/use-socket";
 import { getOtherUserAndGroup } from "@/lib/helper";
 import type { MessageType } from "@/types/chat.type";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useWebRtc } from "@/hooks/use-webrtc";
+import { WebRtcPeer } from "@/hooks/webrtc";
 
 const SingleChat = () => {
   const chatId = useChatId();
+
   const { fetchSingleChat, isSingleChatLoading, singleChat } = useChat();
-  const { socket, isCallDeclined, setActiveChatId } = useSocket();
+  const { socket, isCallDeclined, setActiveChatId, activeChatId } = useSocket();
   const { user } = useAuth();
+  const {
+    connectWebRtc,
+    isCallAccepted,
+    setIsCaller,
+    activeTab: tab,
+    setIscallAccepted
+  } = useWebRtc();
   const [replyTo, setReplyTo] = useState<MessageType | null>(null);
   const [activeTab, setActiveTab] = useState<"chat" | "call">("chat");
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -27,14 +37,24 @@ const SingleChat = () => {
   const currentUserId = user?._id || null;
   const chat = singleChat?.chat;
   const messages = singleChat?.messages || [];
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    if (isCallDeclined == true) setIsCalling(false);
-  }, [isCallDeclined]);
+    if (chatId) setActiveChatId(chatId);
+  }, [chatId, setActiveChatId]);
+
+  useEffect(() => {
+    if (tab) setActiveTab(tab as "call");
+  }, [tab]);
+
+  useEffect(() => {
+    if (isCallDeclined == true || isCallAccepted == true) setIsCalling(false);
+  }, [isCallDeclined, isCallAccepted]);
 
   useEffect(() => {
     if (!chatId) return;
-    setActiveChatId(chatId);
     fetchSingleChat(chatId);
   }, [fetchSingleChat, chatId, setActiveChatId]);
 
@@ -42,10 +62,53 @@ const SingleChat = () => {
     if (!chatId || !socket) return;
 
     socket.emit("chat:join", chatId);
+
+    socket.on("request_accepted", async () => {
+      alert();
+      setIscallAccepted(true);
+
+      if (!chatId || !socket) return;
+      setActiveChatId(chatId);
+      const peer = new WebRtcPeer((candidate) => {
+        socket.emit("call:webrtc:send_ice", {
+          activeChatId,
+          candidate: candidate
+        });
+      });
+
+      peer.setOnRemoteStream((stream) => {
+        remoteVideoRef.current!.srcObject = stream;
+      });
+
+      const localStream = await peer.initMedia();
+      localVideoRef.current!.srcObject = localStream;
+
+      const offer = await peer.createOffer();
+      socket.emit("call:webrtc:send_offer", {
+        activeChatId,
+        offer
+      });
+
+      socket.on("call:webrtc:recieve_answer", async (answer) => {
+        await peer.handleAnswer(answer);
+      });
+
+      socket.on("call:webrtc:recieve_ice", async (candidate) => {
+        await peer.handleIce(candidate);
+      });
+    });
+
     return () => {
       socket.emit("chat:leave", chatId);
     };
-  }, [chatId, socket]);
+  }, [
+    chatId,
+    socket,
+    activeChatId,
+    connectWebRtc,
+    setActiveChatId,
+    setIscallAccepted
+  ]);
 
   if (isSingleChatLoading) {
     return (
@@ -96,8 +159,7 @@ const SingleChat = () => {
             />
           )
         ) : (
-          // <VideoCall chat={chat!} currentUserId={currentUserId} />
-          <VideoCall />
+          <VideoCall locaVideo={localVideoRef} remoteVideo={remoteVideoRef} />
         )}
       </div>
 
@@ -135,6 +197,7 @@ const SingleChat = () => {
                     setConfirmOpen(false);
                     setIsCalling(true);
                     setActiveTab("call");
+                    setIsCaller(true);
                   }}
                   disabled={!other.isOnline}
                   className={`px-4 py-2 rounded-md text-white ${

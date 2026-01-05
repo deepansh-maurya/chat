@@ -83,6 +83,38 @@ export const initializeSocket = (httpServer: HTTPServer) => {
       }
     );
 
+    socket.on("call:webrtc:send_offer", async ({ activeChatId, offer }) => {
+      socket
+        .to(`chat:${activeChatId}`)
+        .emit("call:webrtc:recieve_offer", offer);
+      console.log("sent offer", activeChatId);
+    });
+
+    socket.on("call-accepted", async (activeChatId) => {
+
+      console.log(activeChatId,"call accepted~")
+
+      socket.to(`chat:${activeChatId}`).emit("request_accepted");
+    });
+
+    socket.on("video:request", async (activeChatId) => {
+      socket.to(`chat:${activeChatId}`).emit("video:accept");
+    });
+
+    socket.on("call:webrtc:send_answer", async ({ activeChatId, answer }) => {
+      socket
+        .to(`chat:${activeChatId}`)
+        .emit("call:webrtc:recieve_answer", answer);
+      console.log("sent answer", activeChatId);
+    });
+
+    socket.on("call:webrtc:send_ice", async ({ activeChatId, candidate }) => {
+      socket
+        .to(`chat:${activeChatId}`)
+        .emit("call:webrtc:recieve_ice", candidate);
+      console.log("send ice");
+    });
+
     socket.on(
       "call:request",
       async (chatId: string, callback?: (err?: string) => void) => {
@@ -116,9 +148,6 @@ export const initializeSocket = (httpServer: HTTPServer) => {
         callback?.();
       }
     );
-
-    
-
 
     socket.on("chat:leave", (chatId: string) => {
       if (chatId) {

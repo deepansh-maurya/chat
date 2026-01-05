@@ -13,7 +13,7 @@ interface SocketState {
   setActiveChatId: (val: string) => void;
   isCallDeclined: boolean | undefined;
   setIsRecivingCall: (value: boolean) => void;
-  setIsCallDeclined: (value: boolean|undefined) => void;
+  setIsCallDeclined: (value: boolean | undefined) => void;
 }
 
 export const useSocket = create<SocketState>()((set, get) => ({
@@ -28,6 +28,7 @@ export const useSocket = create<SocketState>()((set, get) => ({
       activeChatId: val
     }));
   },
+
   connectSocket: () => {
     const { socket } = get();
     console.log(socket, "socket");

@@ -1,7 +1,7 @@
 import { useSocket } from "@/hooks/use-socket";
 import Portal from "./portal";
 import { Phone, PhoneOff } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useWebRtc } from "@/hooks/use-webrtc";
 
 interface Props {
@@ -12,9 +12,6 @@ interface Props {
   onDecline?: () => void;
 }
 
-const RING_URL =
-  "https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg";
-
 const IncomingCall = ({
   visible = false,
   callerName = "Unknown",
@@ -23,33 +20,13 @@ const IncomingCall = ({
   onDecline
 }: Props) => {
   const [open, setOpen] = useState(visible);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const { socket, activeChatId } = useSocket();
-  const { pc } = useWebRtc();
+  const { setActiveTab, setIsReciever } = useWebRtc();
   useEffect(() => {
     setOpen(visible);
   }, [visible]);
 
-  useEffect(() => {
-    if (!open) return;
-    // try play audio
-    audioRef.current?.play().catch(() => {});
-    return () => {
-      audioRef.current?.pause();
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-      }
-    };
-  }, [open]);
-
   if (!open) return null;
-
-  const handleCreateOffer = async () => {
-    if (!pc || !socket) return;
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    socket?.emit("call:webrtc:send_offer", activeChatId);
-  };
 
   return (
     <Portal>
@@ -78,7 +55,6 @@ const IncomingCall = ({
             <button
               onClick={() => {
                 setOpen(false);
-                audioRef.current?.pause();
                 onDecline?.();
                 socket?.emit("call:rejected", activeChatId);
               }}
@@ -90,17 +66,20 @@ const IncomingCall = ({
             <button
               onClick={async () => {
                 setOpen(false);
-                audioRef.current?.pause();
                 onAccept?.();
-                handleCreateOffer();
+                // connectWebRtc();
+
+                console.log("call accepted", activeChatId);
+
+                socket?.emit("call-accepted", activeChatId);
+                setActiveTab("call");
+                setIsReciever(true);
               }}
               className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-md shadow"
             >
               <Phone className="w-4 h-4" /> Accept
             </button>
           </div>
-
-          <audio ref={audioRef} src={RING_URL} autoPlay loop />
         </div>
       </div>
     </Portal>

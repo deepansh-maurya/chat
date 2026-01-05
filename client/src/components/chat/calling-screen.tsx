@@ -5,8 +5,6 @@ interface Props {
   onEnd: () => void;
 }
 
-const RING_URL =
-  "https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg";
 
 const CallingScreen = ({ name, avatar, onEnd }: Props) => {
 
@@ -33,7 +31,6 @@ const CallingScreen = ({ name, avatar, onEnd }: Props) => {
           </button>
         </div>
 
-        <audio src={RING_URL} autoPlay loop />
       </div>
     </div>
   );

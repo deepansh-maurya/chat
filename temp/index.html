@@ -27,6 +27,9 @@
       ]
     });
 
+
+    console.log("webrtc connectd")
+
     // ---- ICE CANDIDATE EXCHANGE (PATH DISCOVERY) ----
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -35,12 +38,14 @@
           to: peerId,
           candidate: event.candidate
         }));
+        console.log("got ice")
       }
     };
 
     // ---- REMOTE MEDIA RECEIVED ----
     pc.ontrack = (event) => {
       document.getElementById("remote").srcObject = event.streams[0];
+      console.log('got remtoe stream')
     };
 
     // ---- CAPTURE LOCAL MEDIA ----
@@ -50,6 +55,7 @@
 
         // Attach media to WebRTC engine
         stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        console.log("got local stream")
       });
 
     // ---- HANDLE SIGNALING MESSAGES ----
@@ -69,16 +75,19 @@
           to: data.from,
           answer
         }));
+        console.log("got offer and sent asnwer")
       }
 
       // ---- RECEIVED ANSWER (SDP AGREEMENT COMPLETE) ----
       if (data.type === "answer") {
         await pc.setRemoteDescription(data.answer);
+        console.log("set answer")
       }
 
       // ---- RECEIVED ICE CANDIDATE (PATH OPTION) ----
       if (data.type === "ice") {
         await pc.addIceCandidate(data.candidate);
+        console.log("set ice")
       }
     };
 
@@ -93,6 +102,7 @@
         from: myId,
         offer
       }));
+      console.log("sent offer ")
     };
   </script>
 </body>
