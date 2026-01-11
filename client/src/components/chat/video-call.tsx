@@ -1,46 +1,55 @@
 import { useSocket } from "@/hooks/use-socket";
 import { useWebRtc } from "@/hooks/use-webrtc";
 import { WebRtcPeer } from "@/hooks/webrtc";
-import { Mic, Video, PhoneOff } from "lucide-react";
-import { useEffect, useState, type RefObject } from "react";
-
-// interface Props {
-//   chat: ChatType;
-//   currentUserId: string | null;
-// }
+import { PhoneOff } from "lucide-react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 
 const VideoCall = ({
   locaVideo,
-  remoteVideo
+  remoteVideo,
+  callerCleanUp,
+  stopMedia
 }: {
   locaVideo: RefObject<HTMLVideoElement | null>;
   remoteVideo: RefObject<HTMLVideoElement | null>;
+  callerCleanUp: () => Promise<void>;
+  stopMedia(videoEl: HTMLVideoElement | null): void;
 }) => {
-  //   const { name, avatar, isOnline } = getOtherUserAndGroup(chat, currentUserId);
-  const [muted, setMuted] = useState(false);
-  const { pc, setIscallAccepted, isReciever } = useWebRtc();
-  const [cameraOn, setCameraOn] = useState(true);
+  const peer = useRef<WebRtcPeer | undefined>(undefined);
+  const { setIscallAccepted, isReciever } = useWebRtc();
   const { socket, activeChatId } = useSocket();
+
+  const calleeCleanUp = useCallback(async () => {
+    if (peer.current && socket) {
+      peer.current.close();
+      locaVideo.current!.srcObject = null;
+      remoteVideo.current!.srcObject = null;
+      stopMedia(locaVideo.current);
+      stopMedia(remoteVideo.current);
+      socket.emit("call:end", activeChatId);
+      window.location.reload()
+    }
+  }, [socket, locaVideo, remoteVideo, stopMedia, activeChatId]);
 
   useEffect(() => {
     if (!socket || isReciever == false) return;
     (async () => {
-      const peer = new WebRtcPeer((candidate) => {
+      peer.current = new WebRtcPeer((candidate) => {
         socket.emit("call:webrtc:send_ice", {
           activeChatId,
           candidate: candidate
         });
       });
 
-      peer.setOnRemoteStream((stream) => {
+      peer.current.setOnRemoteStream((stream) => {
         remoteVideo.current!.srcObject = stream;
       });
 
-      const localStream = await peer.initMedia();
+      const localStream = await peer.current.initMedia();
       locaVideo.current!.srcObject = localStream;
 
       socket.on("call:webrtc:recieve_offer", async (offer) => {
-        const answer = await peer.handleOffer(offer);
+        const answer = await peer.current?.handleOffer(offer);
         socket.emit("call:webrtc:send_answer", {
           activeChatId,
           answer
@@ -49,17 +58,22 @@ const VideoCall = ({
       });
 
       socket.on("call:webrtc:recieve_ice", async (candidate) => {
-        await peer.handleIce(candidate);
+        await peer.current?.handleIce(candidate);
       });
     })();
+
+    socket.on("call:end:accepted", () => {
+      calleeCleanUp();
+    });
   }, [
-    pc,
     socket,
     locaVideo,
     remoteVideo,
     activeChatId,
     setIscallAccepted,
-    isReciever
+    isReciever,
+    calleeCleanUp,
+    stopMedia
   ]);
 
   return (
@@ -89,22 +103,12 @@ const VideoCall = ({
 
       <div className="mt-4 w-full max-w-4xl flex items-center justify-center gap-4">
         <button
-          onClick={() => setMuted((s) => !s)}
-          className={`p-3 rounded-full bg-card border border-border hover:bg-muted-foreground/5 flex items-center justify-center`}
-          aria-pressed={muted}
+          onClick={() => {
+            if (isReciever) calleeCleanUp();
+            else callerCleanUp();
+          }}
+          className="p-3 rounded-full bg-red-600 text-white flex items-center justify-center shadow-md"
         >
-          <Mic className="w-5 h-5" />
-        </button>
-
-        <button
-          onClick={() => setCameraOn((s) => !s)}
-          className={`p-3 rounded-full bg-card border border-border hover:bg-muted-foreground/5 flex items-center justify-center`}
-          aria-pressed={!cameraOn}
-        >
-          <Video className="w-5 h-5" />
-        </button>
-
-        <button className="p-3 rounded-full bg-red-600 text-white flex items-center justify-center shadow-md">
           <PhoneOff className="w-5 h-5" />
         </button>
       </div>

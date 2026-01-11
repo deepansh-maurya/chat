@@ -30,6 +30,7 @@ export class WebRtcPeer {
   /* ---------- Media ---------- */
 
   async initMedia(): Promise<MediaStream> {
+    if (this.localStream) return this.localStream;
     this.localStream = await navigator.mediaDevices.getUserMedia({
       video: true,
       audio: true
@@ -38,6 +39,8 @@ export class WebRtcPeer {
     this.localStream
       .getTracks()
       .forEach((track) => this.pc.addTrack(track, this.localStream!));
+
+    console.log("getUserMedia called", Date.now());
 
     return this.localStream;
   }
@@ -88,6 +91,9 @@ export class WebRtcPeer {
 
   close() {
     this.localStream?.getTracks().forEach((t) => t.stop());
+    this.localStream = null;
     this.pc.close();
+    this.pc.onicecandidate = null;
+    this.pc.ontrack = null;
   }
 }

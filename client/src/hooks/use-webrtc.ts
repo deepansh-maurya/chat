@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 interface WebRtcState {
   pc: RTCPeerConnection | null;
-  connectWebRtc: (socket: any, chatId: any) => void;
+  connectWebRtc: () => void;
   remoteStream: MediaStream | null;
   localStream: MediaStream | null;
   isCallAccepted: boolean;
@@ -50,7 +50,7 @@ export const useWebRtc = create<WebRtcState>()((set) => ({
       isCallAccepted: val
     }));
   },
-  connectWebRtc: (socket: any, chatId: any) => {
+  connectWebRtc: () => {
     const pc = new RTCPeerConnection({
       iceServers: [
         {
@@ -63,22 +63,5 @@ export const useWebRtc = create<WebRtcState>()((set) => ({
     });
     console.log(pc, "created webrtc insance");
     set({ pc: pc });
-
-    pc.onicecandidate = (event) => {
-      console.log(event);
-      if (event.candidate) {
-        socket.emit("call:webrtc:send_ice", {
-          activeChatId: chatId,
-          candidate: event.candidate
-        });
-
-        console.log(event.candidate, "got candidate and send");
-      }
-    };
-
-    // pc.ontrack = (event) => {
-    //   // set({ remoteStream: event.streams[0] });
-    //   console.log("getting remote video audio");
-    // };
   }
 }));

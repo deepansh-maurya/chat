@@ -91,10 +91,13 @@ export const initializeSocket = (httpServer: HTTPServer) => {
     });
 
     socket.on("call-accepted", async (activeChatId) => {
-
-      console.log(activeChatId,"call accepted~")
+      console.log(activeChatId, "call accepted~");
 
       socket.to(`chat:${activeChatId}`).emit("request_accepted");
+    });
+
+    socket.on("call:end", (activeChatId) => {
+      socket.to(`chat:${activeChatId}`).emit("call:end:accepted");
     });
 
     socket.on("video:request", async (activeChatId) => {

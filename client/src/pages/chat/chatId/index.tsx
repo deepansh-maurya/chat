@@ -12,12 +12,13 @@ import useChatId from "@/hooks/use-chat-id";
 import { useSocket } from "@/hooks/use-socket";
 import { getOtherUserAndGroup } from "@/lib/helper";
 import type { MessageType } from "@/types/chat.type";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebRtc } from "@/hooks/use-webrtc";
 import { WebRtcPeer } from "@/hooks/webrtc";
 
 const SingleChat = () => {
   const chatId = useChatId();
+  const peer = useRef<WebRtcPeer | undefined>(undefined);
 
   const { fetchSingleChat, isSingleChatLoading, singleChat } = useChat();
   const { socket, isCallDeclined, setActiveChatId, activeChatId } = useSocket();
@@ -58,46 +59,67 @@ const SingleChat = () => {
     fetchSingleChat(chatId);
   }, [fetchSingleChat, chatId, setActiveChatId]);
 
+  const callerCleanUp = useCallback(async () => {
+    if (peer.current && socket) {
+      peer.current.close();
+      localVideoRef.current!.srcObject = null;
+      remoteVideoRef.current!.srcObject = null;
+      stopMedia(localVideoRef.current);
+      stopMedia(remoteVideoRef.current);
+      window.location.reload();
+      socket.emit("call:end", activeChatId);
+    }
+  }, [localVideoRef, remoteVideoRef, socket, activeChatId]);
+
+  function stopMedia(videoEl: HTMLVideoElement | null) {
+    if (!videoEl?.srcObject) return;
+
+    const stream = videoEl.srcObject as MediaStream;
+    stream.getTracks().forEach((track) => track.stop());
+    videoEl.srcObject = null;
+  }
+
   useEffect(() => {
     if (!chatId || !socket) return;
 
     socket.emit("chat:join", chatId);
 
     socket.on("request_accepted", async () => {
-      alert();
       setIscallAccepted(true);
 
       if (!chatId || !socket) return;
       setActiveChatId(chatId);
-      const peer = new WebRtcPeer((candidate) => {
+      peer.current = new WebRtcPeer((candidate) => {
         socket.emit("call:webrtc:send_ice", {
           activeChatId,
           candidate: candidate
         });
       });
 
-      peer.setOnRemoteStream((stream) => {
+      peer.current.setOnRemoteStream((stream) => {
         remoteVideoRef.current!.srcObject = stream;
       });
 
-      const localStream = await peer.initMedia();
+      const localStream = await peer.current.initMedia();
       localVideoRef.current!.srcObject = localStream;
 
-      const offer = await peer.createOffer();
+      const offer = await peer.current.createOffer();
       socket.emit("call:webrtc:send_offer", {
         activeChatId,
         offer
       });
 
       socket.on("call:webrtc:recieve_answer", async (answer) => {
-        await peer.handleAnswer(answer);
+        await peer.current!.handleAnswer(answer);
       });
 
       socket.on("call:webrtc:recieve_ice", async (candidate) => {
-        await peer.handleIce(candidate);
+        await peer.current!.handleIce(candidate);
       });
     });
-
+    socket.on("call:end:accepted", () => {
+      callerCleanUp();
+    });
     return () => {
       socket.emit("chat:leave", chatId);
     };
@@ -107,7 +129,8 @@ const SingleChat = () => {
     activeChatId,
     connectWebRtc,
     setActiveChatId,
-    setIscallAccepted
+    setIscallAccepted,
+    callerCleanUp
   ]);
 
   if (isSingleChatLoading) {
@@ -159,7 +182,12 @@ const SingleChat = () => {
             />
           )
         ) : (
-          <VideoCall locaVideo={localVideoRef} remoteVideo={remoteVideoRef} />
+          <VideoCall
+            locaVideo={localVideoRef}
+            remoteVideo={remoteVideoRef}
+            callerCleanUp={callerCleanUp}
+            stopMedia={stopMedia}
+          />
         )}
       </div>
 
